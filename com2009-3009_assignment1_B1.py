@@ -1,12 +1,6 @@
 #!/usr/bin/env python3
 
-'''COM2009-3009 EV3DEV TEST PROGRAM'''
-
-
-
-# Connect left motor to Output C and right motor to Output B
-
-# Connect an ultrasonic sensor to Input 3
+'''COM2009 ev3dev Assignment2'''
 
 
 
@@ -18,15 +12,11 @@ import time
 
 import ev3dev.ev3 as ev3
 
+from random import *
 
 
-# state constants
 
-ON = True
-
-OFF = False
-
-
+'''Provided Functions'''
 
 
 
@@ -86,214 +76,409 @@ def set_font(name):
 
 
 
+''' End provided functions '''
 
 
 
 
 
-#Part 1.2
-"""def main():
+def debug_printer(var_name, var_val):
 
-    # set the console just how we want it
+    debug_print(var_name)
 
-    reset_console()
-
-    set_cursor(OFF)
-
-    set_font('Lat15-Terminus24x12')
+    debug_print(var_val)
 
 
 
-    # set the ultrasonic sensor variable
-
-    us3 = ev3.UltrasonicSensor('in3')
 
 
 
-    oldM = 0
 
-    newM = 0
+def actuate(m_left, m_right, v, dv, leftFlip, rightFlip):
 
-    oldS = 0.0
-
-    newS = 0.0
-
-    count = 0
-
-    minDs = 0
-
-    maxDs = 0
+    ''' Function to actuate motors 
 
 
 
-    for i in range (0,1000):
+    Takes 2 motors as inputs, v for base speed, dv for diff 
 
-        ds = us3.value()
+    returns nil
 
-        time.sleep(0.01)
-
-
-
-        # display the distance on the screen of the device
-
-        print('Distance =',ds)
+    '''
 
 
 
-        # print the distance to the output panel in VS Code
+    left = (v+dv)*leftFlip
 
-        debug_print('Distance =',ds)
+    right = (v-dv)*rightFlip
 
 
 
-        count+=1
+    '''debug_printer("Fed into motor left:", (left))
 
-        if count == 1:
+    debug_printer("Fed into right motor:", (right))'''
 
-            oldM = ds
 
-            newM = ds
 
-            minDs = ds
+    m_left.run_direct(duty_cycle_sp=left) 
 
-            maxDs = ds
+    m_right.run_direct(duty_cycle_sp=right)
 
-            oldS = 0.0
+
+
+def get_response(kp, ki, kd, dt, cur_error, prev_error, integral):
+
+    '''Get PID response'''
+
+    integral = 0
+
+    integral+= cur_error * dt
+
+    derivative = (cur_error - prev_error) / dt
+
+
+
+    return (kp * cur_error) + (ki * integral) + (kd * derivative)
+
+
+
+
+
+''' hk error metric - difference of sensors '''
+
+def hk_metric(l_dist, r_dist):
+
+    return (l_dist-r_dist)
+
+
+
+
+
+def theo_metric(l_dist, r_dist):
+
+    return ((l_dist+r_dist)/2)
+
+
+
+def theo_jose_hybrid_metric(l_dist, r_dist):
+
+    if l_dist > 2500:
+
+        return (r_dist / 2)
+
+    elif r_dist > 2500:
+
+        return (l_dist / 2)
+
+    else:
+
+        return theo_metric(l_dist, r_dist)
+
+
+
+
+
+# Motor vars
+
+m_left = ev3.LargeMotor('outB')
+
+m_right = ev3.LargeMotor('outC')
+
+
+
+# Sensors
+
+us_left = ev3.UltrasonicSensor('in3')
+
+us_right = ev3.UltrasonicSensor('in2')
+
+
+
+cs = ev3.ColorSensor('in1')
+
+cs.mode = 'COL-AMBIENT'
+
+gy = ev3.GyroSensor('in4')
+
+gy.mode = 'GYRO-ANG'
+
+
+
+
+
+global runWalk
+
+global runSearch
+
+
+
+
+
+
+
+def walk(walkTime, lightFarValue, lightInfront):
+
+    sp = -10
+
+    r = 0
+
+    b = 0
+
+    e = r - b
+
+    u = 0
+
+    ic = time.clock() #initial clock time
+
+    dt = 0
+
+    de = 0
+
+    t = 0
+
+    chillMode = 0.08
+
+    TU = 0.45
+
+    KU = 0.17
+
+    KP = 0.6 * KU
+
+    KI = (1.2 * KU) / TU
+
+    KI = KI * dt
+
+    KD = (3 * KU * TU) / 40
+
+    dt = time.clock() - t
+
+    KD = KD/dt
+
+    maxMotorValue = 80
+
+    t_interval = ic
+
+    integral = 0
+
+    m = (r*2)/maxMotorValue
+
+    bMotorValue = 0
+
+    cMotorValue = 0
+
+    turn = 0
+
+    speed = 60
+
+    startTime = time.time()
+
+    currentTime = time.time()
+
+    while (currentTime < (startTime + walkTime) and cs.value() < lightFarValue or lightInfront == True):
+
+        timePassed = currentTime - startTime
+
+        currentTime = time.time()
+
+        t = time.clock() - ic
+
+        e1 = r - b
+
+        integral = integral + (e1 * dt)
+
+        dt = time.clock() - t
+
+        de = e1 - e
+
+        u = (KP*e1) + (KI*integral) + (KD*de)
+
+        turn = m * e1
+
+        if (u < -maxMotorValue):
+
+            u = -maxMotorValue
+
+        elif (u > maxMotorValue):
+
+            u = maxMotorValue
+
+        bMotorValue = (u * -1) - speed
+
+        cMotorValue = u - speed
+
+        if (bMotorValue < -maxMotorValue):
+
+            bMotorValue = -maxMotorValue
+
+        elif (bMotorValue > maxMotorValue):
+
+            bMotorValue = maxMotorValue
+
+        if (cMotorValue < -maxMotorValue):
+
+            cMotorValue = -maxMotorValue
+
+        elif (cMotorValue > maxMotorValue):
+
+            cMotorValue = maxMotorValue
+
+        if cs.value() > 12:
+            m_right.run_direct(duty_cycle_sp=int(bMotorValue))
+            m_left.run_direct(duty_cycle_sp=int(cMotorValue))
+        else:
+            m_left.run_direct(duty_cycle_sp=int(bMotorValue))
+            m_right.run_direct(duty_cycle_sp=int(cMotorValue))
+
+
+
+        e = e1
+
+        b = (us_left.value()*-1) + us_right.value()
+
+
+
+def setNewDirection(input):
+
+    if input == 0:
+        randomWalkAngle = randint(0, 270)
+    else:
+        randomWalkAngle = input
+
+    startingAngle = gy.value()
+    currentAngle = gy.value()
+
+    while currentAngle < (startingAngle + randomWalkAngle):
+        actuate(m_left, m_right, 20, 20, -1, 1)
+        currentAngle = gy.value()
+
+
+
+
+
+def search(lightFarValue):
+
+    global runWalk
+
+    global runSearch
+
+    rotateSpeed = 40
+
+    units = gy.units
+
+    angle = gy.value()
+
+    startingAngle = angle
+
+    currentAngle = angle
+
+    currentCSValue = cs.value()
+
+    startCSValue = cs.value()
+
+    #debug_print(str(angle) + " " + units)
+
+    #debug_print("CS VALUE:" + str(cs.value()))
+
+    
+    DL = [1, -1]
+    direction = sample(DL, 1)
+
+    while runSearch == True:
+        currentAngle = gy.value()
+        if gy.value() > currentAngle:
+
+            #if the colour sensor value is triggered then stop searching and start walking
+            if cs.value() > lightFarValue:
+                debug_print("Sensor stopped search")
+                runSearch = False
+                runWalk = True
 
         else:
 
-            newM = oldM + (ds - oldM)/count
+            #update CS value correctly, fix the robot, find the light, win the competition
 
-            newS = oldS + (ds - oldM)*(ds-newM)
+            actuate(m_left, m_right, rotateSpeed, rotateSpeed, direction[0], direction[0])
 
-            oldM = newM
+        if currentAngle > (startingAngle + (270 * direction[0] * -1)):
+            debug_print("Rotation stopped search")
+            setNewDirection(0)
+            runSearch = False
+            runWalk = True
 
-            oldS = newS
+    if cs.value() > lightFarValue:
+        setNewDirection(15)
 
-            if ds < minDs:
 
-                minDs = ds
 
-            if ds > maxDs:
 
-                maxDs = ds
+
+
+
+
+def main():
+
+    '''Main calling Function'''
+
+    debug_print("Running")
+
+    global runWalk
+
+    global runSearch
+
+    runWalk = True
+
+    runSearch = False
+
+    lightFound = False
+
+    lightCloseValue = 15
+
+    lightFarValue = 10
+
+    while lightFound == False:
+        if cs.value() >= lightCloseValue:
+
+            runWalk = False
+
+            runSearch = False
+
+            lightFound = True
+
+            debug_print("LIGHT FOUND!!!")
+
+        elif runWalk == True:
+
+            debug_print("Walk")
+            
+            startTime = time.time()
+
+            # Random walk time
+            randomWalkTime = randint(1, 7)
+            debug_print(randomWalkTime)
+
+            if cs.value() < lightFarValue:
+                walk(randomWalkTime, lightFarValue, False)
+
+            while cs.value() >= lightFarValue:
+                walk(0.2, lightFarValue, True)
+
+            runWalk = False
+            runSearch = True
 
         
 
-        debug_print ('Mean =',newM)
+        elif runSearch == True:
 
-        if count >1:
+            debug_print("Search")
 
-            debug_print ('Variance =',newS/(count-1))
-
-
-
-    debug_print ('Min =',minDs)
-
-    debug_print ('Max =',maxDs)
+            search(lightFarValue)
 
 
 
-    # announce program end
-
-    ev3.Sound.speak('Test program ending').wait()
-"""
-
-#Part 1.3
-"""def main():
-    # set the motor variables
-    mb = ev3.LargeMotor('outB')
-    mc = ev3.LargeMotor('outC')
-    sp = -25
-    ps = 25
-
-    while (True):
-        # move
-        mb.run_direct(duty_cycle_sp=sp)
-        mc.run_direct(duty_cycle_sp=sp)
-        time.sleep(5)
-
-        # stop
-        mb.run_direct(duty_cycle_sp=0)
-        mc.run_direct(duty_cycle_sp=0)
-
-        mb.run_direct(duty_cycle_sp=sp)
-        mc.run_direct(duty_cycle_sp=ps)
-        time.sleep(2)
-"""
 
 
-#Part 1.5
-#
-def main():
-    us3 = ev3.UltrasonicSensor('in3')
-    us2 = ev3.UltrasonicSensor('in2')
-    sp = -10
-    mb = ev3.LargeMotor('outB')
-    mc = ev3.LargeMotor('outC')
-    r = 0
-    b = 0
-    e = r - b
-    u = 0
-    ic = time.clock() #initial clock time
-    dt = 0
-    de = 0
-    t = 0
-    chillMode = 0.08
-    TU = 0.55
-    KU = 0.06
-    KP = 0.6 * KU
-    KI = (1.2 * KU) / TU
-    KI = KI * dt
-    KD = (3 * KU * TU) / 40
-    dt = time.clock() - t
-    KD = KD/dt
-    maxMotorValue = 100
-    t_interval = ic
-    integral = 0
-    m = (r*2)/maxMotorValue
-    bMotorValue = 0
-    cMotorValue = 0
-    turn = 0
-    speed = 70
-    while (True):
-        t = time.clock() - ic
-        #Change the value of the set distance
-        """if (t - t_interval >= 1):
-            if (r == 500):
-                #r = 300
-                debug_print("r is now 300")
-                KP += 0.5
-            else:
-                #r = 500
-                debug_print("r is now 500")
-                KP += 0.5
-            t_interval = t"""
-        e1 = r - b
-        integral = integral + (e1 * dt)
-        dt = time.clock() - t
-        de = e1 - e
-        u = (KP*e1) + (KI*integral) + (KD*de)
-        turn = m * e1
-        if (u < -maxMotorValue):
-            u = -maxMotorValue
-        elif (u > maxMotorValue):
-            u = maxMotorValue
-        bMotorValue = (u * -1) - speed
-        cMotorValue = u - speed
-        if (bMotorValue < -maxMotorValue):
-            bMotorValue = -maxMotorValue
-        elif (bMotorValue > maxMotorValue):
-            bMotorValue = maxMotorValue
-        if (cMotorValue < -maxMotorValue):
-            cMotorValue = -maxMotorValue
-        elif (cMotorValue > maxMotorValue):
-            cMotorValue = maxMotorValue
-        mb.run_direct(duty_cycle_sp=int(bMotorValue))
-        mc.run_direct(duty_cycle_sp=int(cMotorValue))
 
-        e = e1
-        b = (us3.value()*-1) + us2.value()
+
 
 
 
